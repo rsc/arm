@@ -504,6 +504,51 @@ func uncondCases(t *testing.T) func(func([]byte)) {
 	}
 }
 
+func countBits(x uint32) int {
+	n := 0
+	for ; x != 0; x >>= 1 {
+		n += int(x & 1)
+	}
+	return n
+}
+
+func expandBits(x, m uint32) uint32 {
+	var out uint32
+	for i := uint(0); i < 32; i++ {
+		out >>= 1
+		if m&1 != 0 {
+			out |= (x & 1) << 31
+			x >>= 1
+		}
+		m >>= 1
+	}
+	return out
+}
+
+func tryCondMask(mask, val uint32, try func([]byte)) {
+	n := countBits(^mask)
+	bits := uint32(0)
+	for i := 0; i < 1<<uint(n); i++ {
+		bits += 848251 // arbitrary prime
+		x := val | expandBits(bits, ^mask) | uint32(i)%15<<28
+		try([]byte{byte(x), byte(x >> 8), byte(x >> 16), byte(x >> 24)})
+	}
+}
+
+// vfpCases generates VFP instructions.
+func vfpCases(t *testing.T) func(func([]byte)) {
+	const (
+		vfpmask uint32 = 0xFF00FE10
+		vfp     uint32 = 0x0E009A00
+	)
+	return func(try func([]byte)) {
+		tryCondMask(0xff00fe10, 0x0e009a00, try) // standard VFP instruction space
+		tryCondMask(0xffc00f7f, 0x0e000b10, try) // VFP MOV core reg to/from float64 half
+		tryCondMask(0xffe00f7f, 0x0e000a10, try) // VFP MOV core reg to/from float32
+		tryCondMask(0xffef0fff, 0x0ee10a10, try) // VFP MOV core reg to/from cond codes
+	}
+}
+
 // hexCases generates the cases written in hexadecimal in the encoded string.
 // Spaces in 'encoded' separate entire test cases, not individual bytes.
 func hexCases(t *testing.T, encoded string) func(func([]byte)) {

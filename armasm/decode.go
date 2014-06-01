@@ -129,12 +129,15 @@ type instArg uint8
 const (
 	_ instArg = iota
 	arg_APSR
+	arg_FPSCR
+	arg_Dn_half
 	arg_R1_0
 	arg_R1_12
 	arg_R2_0
 	arg_R2_12
 	arg_R_0
 	arg_R_12
+	arg_R_12_nzcv
 	arg_R_16
 	arg_R_16_WB
 	arg_R_8
@@ -142,14 +145,24 @@ const (
 	arg_R_shift_R
 	arg_R_shift_imm
 	arg_SP
+	arg_Sd
+	arg_Sd_Dd
+	arg_Dd_Sd
+	arg_Sm
+	arg_Sm_Dm
+	arg_Sn
+	arg_Sn_Dn
 	arg_const
 	arg_endian
+	arg_fbits
+	arg_fp_0
 	arg_imm24
 	arg_imm5
 	arg_imm5_32
 	arg_imm5_nz
 	arg_imm_12at8_4at0
 	arg_imm_4at16_12at0
+	arg_imm_vfp
 	arg_label24
 	arg_label24H
 	arg_label_m_12
@@ -168,6 +181,7 @@ const (
 	arg_mem_R_pm_imm12_postindex
 	arg_mem_R_pm_imm8_W
 	arg_mem_R_pm_imm8_postindex
+	arg_mem_R_pm_imm8at0_offset
 	arg_option
 	arg_registers
 	arg_registers1
@@ -188,6 +202,8 @@ func decodeArg(aop instArg, x uint32) Arg {
 
 	case arg_APSR:
 		return APSR
+	case arg_FPSCR:
+		return FPSCR
 
 	case arg_R_0:
 		return Reg(x & (1<<4 - 1))
@@ -197,6 +213,13 @@ func decodeArg(aop instArg, x uint32) Arg {
 		return Reg((x >> 12) & (1<<4 - 1))
 	case arg_R_16:
 		return Reg((x >> 16) & (1<<4 - 1))
+
+	case arg_R_12_nzcv:
+		r := Reg((x >> 12) & (1<<4 - 1))
+		if r == R15 {
+			return APSR_nzcv
+		}
+		return r
 
 	case arg_R_16_WB:
 		mode := AddrLDM
@@ -240,6 +263,59 @@ func decodeArg(aop instArg, x uint32) Arg {
 	case arg_SP:
 		return SP
 
+	case arg_Sd_Dd:
+		v := (x >> 12) & (1<<4 - 1)
+		vx := (x >> 22) & 1
+		sz := (x >> 8) & 1
+		if sz != 0 {
+			return D0 + Reg(vx<<4+v)
+		} else {
+			return S0 + Reg(v<<1+vx)
+		}
+
+	case arg_Dd_Sd:
+		return decodeArg(arg_Sd_Dd, x^(1<<8))
+
+	case arg_Sd:
+		v := (x >> 12) & (1<<4 - 1)
+		vx := (x >> 22) & 1
+		return S0 + Reg(v<<1+vx)
+
+	case arg_Sm_Dm:
+		v := (x >> 0) & (1<<4 - 1)
+		vx := (x >> 5) & 1
+		sz := (x >> 8) & 1
+		if sz != 0 {
+			return D0 + Reg(vx<<4+v)
+		} else {
+			return S0 + Reg(v<<1+vx)
+		}
+
+	case arg_Sm:
+		v := (x >> 0) & (1<<4 - 1)
+		vx := (x >> 5) & 1
+		return S0 + Reg(v<<1+vx)
+
+	case arg_Dn_half:
+		v := (x >> 16) & (1<<4 - 1)
+		vx := (x >> 7) & 1
+		return RegX{D0 + Reg(vx<<4+v), int((x >> 21) & 1)}
+
+	case arg_Sn_Dn:
+		v := (x >> 16) & (1<<4 - 1)
+		vx := (x >> 7) & 1
+		sz := (x >> 8) & 1
+		if sz != 0 {
+			return D0 + Reg(vx<<4+v)
+		} else {
+			return S0 + Reg(v<<1+vx)
+		}
+
+	case arg_Sn:
+		v := (x >> 16) & (1<<4 - 1)
+		vx := (x >> 7) & 1
+		return S0 + Reg(v<<1+vx)
+
 	case arg_const:
 		v := x & (1<<8 - 1)
 		rot := (x >> 8) & (1<<4 - 1) * 2
@@ -255,6 +331,12 @@ func decodeArg(aop instArg, x uint32) Arg {
 
 	case arg_endian:
 		return Endian((x >> 9) & 1)
+
+	case arg_fbits:
+		return Imm((16 << ((x >> 7) & 1)) - ((x&(1<<4-1))<<1 | (x>>5)&1))
+
+	case arg_fp_0:
+		return Imm(0)
 
 	case arg_imm24:
 		return Imm(x & (1<<24 - 1))
@@ -281,6 +363,10 @@ func decodeArg(aop instArg, x uint32) Arg {
 
 	case arg_imm_12at8_4at0:
 		return Imm((x>>8)&(1<<12-1)<<4 | x&(1<<4-1))
+
+	case arg_imm_vfp:
+		x = (x>>16)&(1<<4-1)<<4 | x&(1<<4-1)
+		return Imm(x)
 
 	case arg_label24:
 		imm := (x & (1<<24 - 1)) << 2
@@ -410,6 +496,16 @@ func decodeArg(aop instArg, x uint32) Arg {
 		imm := int16((x>>8)&(1<<4-1)<<4 | x&(1<<4-1))
 		mode := AddrMode(uint8(p<<1) | uint8(w^1))
 		return Mem{Base: Rn, Mode: mode, Offset: int16(sign) * imm}
+
+	case arg_mem_R_pm_imm8at0_offset:
+		Rn := Reg((x >> 16) & (1<<4 - 1))
+		u := (x >> 23) & 1
+		sign := int8(+1)
+		if u == 0 {
+			sign = -1
+		}
+		imm := int16(x&(1<<8-1)) << 2
+		return Mem{Base: Rn, Mode: AddrOffset, Offset: int16(sign) * imm}
 
 	case arg_option:
 		return Imm(x & (1<<4 - 1))

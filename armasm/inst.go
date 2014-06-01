@@ -80,6 +80,22 @@ type Arg interface {
 	String() string
 }
 
+type Float32Imm float32
+
+func (Float32Imm) IsArg() {}
+
+func (f Float32Imm) String() string {
+	return fmt.Sprintf("#%v", float32(f))
+}
+
+type Float64Imm float32
+
+func (Float64Imm) IsArg() {}
+
+func (f Float64Imm) String() string {
+	return fmt.Sprintf("#%v", float64(f))
+}
+
 // An Imm is an integer constant.
 type Imm uint32
 
@@ -137,7 +153,76 @@ const (
 	R13
 	R14
 	R15
+
+	S0
+	S1
+	S2
+	S3
+	S4
+	S5
+	S6
+	S7
+	S8
+	S9
+	S10
+	S11
+	S12
+	S13
+	S14
+	S15
+	S16
+	S17
+	S18
+	S19
+	S20
+	S21
+	S22
+	S23
+	S24
+	S25
+	S26
+	S27
+	S28
+	S29
+	S30
+	S31
+
+	D0
+	D1
+	D2
+	D3
+	D4
+	D5
+	D6
+	D7
+	D8
+	D9
+	D10
+	D11
+	D12
+	D13
+	D14
+	D15
+	D16
+	D17
+	D18
+	D19
+	D20
+	D21
+	D22
+	D23
+	D24
+	D25
+	D26
+	D27
+	D28
+	D29
+	D30
+	D31
+
 	APSR
+	APSR_nzcv
+	FPSCR
 
 	SP = R13
 	LR = R14
@@ -150,6 +235,10 @@ func (r Reg) String() string {
 	switch r {
 	case APSR:
 		return "APSR"
+	case APSR_nzcv:
+		return "APSR_nzcv"
+	case FPSCR:
+		return "FPSCR"
 	case SP:
 		return "SP"
 	case PC:
@@ -157,10 +246,33 @@ func (r Reg) String() string {
 	case LR:
 		return "LR"
 	}
-	if r < 16 {
-		return fmt.Sprintf("R%d", int(r))
+	if R0 <= r && r <= R15 {
+		return fmt.Sprintf("R%d", int(r-R0))
+	}
+	if S0 <= r && r <= S31 {
+		return fmt.Sprintf("S%d", int(r-S0))
+	}
+	if D0 <= r && r <= D31 {
+		return fmt.Sprintf("D%d", int(r-D0))
 	}
 	return fmt.Sprintf("Reg(%d)", int(r))
+}
+
+// A RegX represents a fraction of a multi-value register.
+// The Index field specifies the index number,
+// but the size of the fraction is not specified.
+// It must be inferred from the instruction and the register type.
+// For example, in a VMOV instruction, RegX{D5, 1} represents
+// the top 32 bits of the 64-bit D5 register.
+type RegX struct {
+	Reg   Reg
+	Index int
+}
+
+func (RegX) IsArg() {}
+
+func (r RegX) String() string {
+	return fmt.Sprintf("%s[%d]", r.Reg, r.Index)
 }
 
 // A RegList is a register list.

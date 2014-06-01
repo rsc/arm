@@ -136,7 +136,7 @@ func add(p *Prog, maskstr, valuestr, text, encoding, tags string) {
 	}
 
 	// For now, ignore the VFP floating point instructions.
-	if strings.HasPrefix(text, "V") {
+	if strings.HasPrefix(text, "V") && !strings.Contains(tags, "vfp") {
 		// TODO
 		return
 	}
@@ -199,7 +199,7 @@ func add(p *Prog, maskstr, valuestr, text, encoding, tags string) {
 	}
 	op, suffix := op[:i], op[i:]
 	if suffix != "" && opSuffix[suffix] == "" {
-		fmt.Fprintf(os.Stderr, "%s: invalid op suffix %q in %s\n", text, op[i:], op)
+		fmt.Fprintf(os.Stderr, "%s: invalid op suffix %q in %s\n", text, suffix, op+suffix)
 	}
 
 	// Make sure fields needed by opcode suffix are available.
@@ -246,7 +246,7 @@ func add(p *Prog, maskstr, valuestr, text, encoding, tags string) {
 		var f, literal, x string
 		if len(opFields) == 0 {
 			fmt.Fprintf(os.Stderr, "%s: ran out of suffix fields for <%s>\n", text, x)
-			continue
+			break
 		}
 		f, opFields = opFields[0], opFields[1:]
 		i := strings.Index(suffix, "<")
@@ -276,7 +276,7 @@ func add(p *Prog, maskstr, valuestr, text, encoding, tags string) {
 			fmt.Fprintf(os.Stderr, "%s: unknown choices for <%s>\n", text, x)
 			expand = []string{x}
 		} else if len(expand) != 1<<uint(fieldWidth[f]) {
-			fmt.Fprintf(os.Stderr, "%s: have %d choices for <%s> but %d bits\n", text, len(expand), fieldWidth[f])
+			fmt.Fprintf(os.Stderr, "%s: have %d choices for <%s> but %d bits\n", text, len(expand), x, fieldWidth[f])
 		}
 		opBits = opBits<<16 | uint64(fieldOffset[f])<<8 | uint64(fieldWidth[f])
 		ops = cross(ops, expand...)
@@ -408,61 +408,30 @@ func add(p *Prog, maskstr, valuestr, text, encoding, tags string) {
 }
 
 // opSuffix describes the encoding fields used to resolve a given opcode suffix.
-// The entries marked xxx can happen in instructions that we're not supporting
-// yet (usually the VFP instructions).
 var opSuffix = map[string]string{
-	"<ADD,SUB>":          "op",
-	"<BIF,BIT,BSL>":      "op:2",
-	"<GE,GT>.F32":        "op",
-	"<MAX,MIN>.<dt>":     "op,size:2",
-	"<MAX,MIN>.F32":      "op",
-	"<MIN,MAX>.<dt>":     "xxx",
-	"<MIN,MAX>.F32":      "xxx",
-	"<MLA,MLS>.<dt>":     "op,size:2",
-	"<MLA,MLS>.F32":      "op",
-	"<MLA,MLS><c>.F64":   "op,cond:4",
-	"<MLA,MLS>L.<dt>":    "op,size:2",
-	"<MLAL,MLSL>.<dt>":   "xxx",
-	"<BT,TB><c>":         "tb,cond:4",
-	"<TBL,TBX>.8":        "op",
-	"<Td>.<Tm_1>":        "op:2,size:2",
-	"<Td>.<Tm_2>":        "op,U",
-	"{R}<c>.<Td>.<Tm_3>": "opc2:3,sz",
-	"<c>":                "cond:4",
-	"<c>.8":              "cond:4",
-	"<c>.<Td_Tf>":        "cond:4,op,sf",
-	"<c>.<dt>":           "cond:4,size:2",
-	"<c>.<size_be>":      "cond:4,b,e",
-	"<c>.F32":            "cond:4",
-	"<c>.F32.F16":        "cond:4",
-	"<c>.F64":            "cond:4",
-	"<c>.F64.F32":        "cond:4",
-	"<c>.I<size>":        "xxx",
-	"<dt>":               "xxx",
-	"<dt_Usize>":         "U,size:2",
-	"<dt_Fsize>":         "F,size:2",
-	"<dt_Isize>":         "size:2",
-	"<n>.<size>":         "op:2,size:2",
-	"<size>":             "xxx",
-	"<size_x>":           "imm4:4",
-	"<type><size>":       "xxx",
-	"<x><y><c>":          "N,M,cond:4",
-	"<y><c>":             "M,cond:4",
-	"<y><c>.F32.F16":     "T,cond:4",
-	"{B}<c>":             "B,cond:4",
-	"{E}<c>.F64":         "E,cond:4",
-	"{R}<c>":             "R,cond:4",
-	"{R}<c>.S32.F64":     "R,cond:4",
-	"{S}<c>":             "S,cond:4",
-	"{U}.<type><size>":   "xxx",
-	"{U}N.<type><size>":  "xxx",
-	"{W}":                "R",
-	"{X}<c>":             "M,cond:4",
-	"<dt_simd>":          "cmode:4",
-	"<size_n>":           "size:2",
-	"<size_vs>":          "L,imm6:6",
-	"<size_vsn>":         "imm6:6",
-	"<type_U><size_vs>":  "U,L,imm6:6",
+	"<ADD,SUB>":                   "op",
+	"<BIF,BIT,BSL>":               "op:2",
+	"<MLA,MLS><c>.F<32,64>":       "op,cond:4,sz",
+	"<MLS,MLA><c>.F<32,64>":       "op,cond:4,sz",
+	"<BT,TB><c>":                  "tb,cond:4",
+	"<TBL,TBX>.8":                 "op",
+	"<c>":                         "cond:4",
+	"<c>.32":                      "cond:4",
+	"<c>.F<32,64>":                "cond:4,sz",
+	"<x><y><c>":                   "N,M,cond:4",
+	"<y><c>":                      "M,cond:4",
+	"{B}<c>":                      "B,cond:4",
+	"{E}<c>.F<32,64>":             "E,cond:4,sz",
+	"{R}<c>":                      "R,cond:4",
+	"<c>.F<32,64>.<U,S>32":        "cond:4,sz,op",
+	"<R,><c>.<U,S>32.F<32,64>":    "op,cond:4,signed,sz",
+	"{S}<c>":                      "S,cond:4",
+	"{W}":                         "R",
+	"{X}<c>":                      "M,cond:4",
+	"<B,T><c>.<F32.F16,F16.F32>":  "T,cond:4,op",
+	"<c>.<F64.F32,F32.F64>":       "cond:4,sz",
+	"<c>.FX<S,U><16,32>.F<32,64>": "cond:4,U,sx,sz",
+	"<c>.F<32,64>.FX<S,U><16,32>": "cond:4,sz,U,sx",
 }
 
 // choices[x] describes the choices for filling in "<"+x+">" in an opcode suffix.
@@ -477,17 +446,18 @@ var choices = map[string][]string{
 // argOps maps from argument descriptions to internal decoder name.
 var argOps = map[string]string{
 	// 4-bit register encodings
-	"<Rm>|Rm:4@0":      "arg_R_0",
-	"<Rn>|Rn:4@0":      "arg_R_0",
-	"<Rt>|Rt:4@0":      "arg_R_0",
-	"<Rm>|Rm:4@8":      "arg_R_8",
-	"<Ra>|Ra:4@12":     "arg_R_12",
-	"<Rd>|Rd:4@12":     "arg_R_12",
-	"<RdLo>|RdLo:4@12": "arg_R_12",
-	"<Rt>|Rt:4@12":     "arg_R_12",
-	"<Rd>|Rd:4@16":     "arg_R_16",
-	"<RdHi>|RdHi:4@16": "arg_R_16",
-	"<Rn>|Rn:4@16":     "arg_R_16",
+	"<Rm>|Rm:4@0":       "arg_R_0",
+	"<Rn>|Rn:4@0":       "arg_R_0",
+	"<Rt>|Rt:4@0":       "arg_R_0",
+	"<Rm>|Rm:4@8":       "arg_R_8",
+	"<Ra>|Ra:4@12":      "arg_R_12",
+	"<Rd>|Rd:4@12":      "arg_R_12",
+	"<RdLo>|RdLo:4@12":  "arg_R_12",
+	"<Rt>|Rt:4@12":      "arg_R_12",
+	"<Rt_nzcv>|Rt:4@12": "arg_R_12_nzcv",
+	"<Rd>|Rd:4@16":      "arg_R_16",
+	"<RdHi>|RdHi:4@16":  "arg_R_16",
+	"<Rn>|Rn:4@16":      "arg_R_16",
 
 	// first and second of consecutive register pair
 	"<Rt1>|Rt:4@0":  "arg_R1_0",
@@ -516,6 +486,7 @@ var argOps = map[string]string{
 	"[<Rn>,+/-<Rm>]{!}|Rn:4@16|U@23|Rm:4@0|P@24|W@21":                              "arg_mem_R_pm_R_W",
 	"[<Rn>],+/-<Rm>{, <shift>}|Rn:4@16|Rm:4@0|imm5:5@7|type:2@5|U@23":              "arg_mem_R_pm_R_shift_imm_postindex",
 	"[<Rn>,+/-<Rm>{, <shift>}]|Rn:4@16|U@23|Rm:4@0|type:2@5|imm5:5@7":              "arg_mem_R_pm_R_shift_imm_offset",
+	"[<Rn>{,#+/-<imm8>}]|Rn:4@16|U@23|imm8:8@0":                                    "arg_mem_R_pm_imm8at0_offset",
 
 	// pc-relative constants
 	"<label+12>|imm12:12@0":                  "arg_label_p_12",
@@ -548,8 +519,23 @@ var argOps = map[string]string{
 	"<registers1>|Rt:4@12":            "arg_registers1",
 	"<endian_specifier>|E@9":          "arg_endian",
 
-	"SP":   "arg_SP",
-	"APSR": "arg_APSR",
+	"SP":    "arg_SP",
+	"APSR":  "arg_APSR",
+	"FPSCR": "arg_FPSCR",
+
+	// VFP floating point registers
+	"<Sd>|Vd:4@12|D@22":         "arg_Sd",
+	"<Sd,Dd>|Vd:4@12|D@22|sz@8": "arg_Sd_Dd",
+	"<Dd,Sd>|Vd:4@12|D@22|sz@8": "arg_Dd_Sd",
+	"<Sn>|Vn:4@16|N@7":          "arg_Sn",
+	"<Sn,Dn>|Vn:4@16|N@7|sz@8":  "arg_Sn_Dn",
+	"<Sm>|Vm:4@0|M@5":           "arg_Sm",
+	"<Sm,Dm>|Vm:4@0|M@5|sz@8":   "arg_Sm_Dm",
+	"#0.0": "arg_fp_0",
+	"#<imm_vfp>|imm4H:4@16|imm4L:4@0|sz@8": "arg_imm_vfp",
+	"#<fbits>|sx@7|imm4:4@0|i@5":           "arg_fbits",
+	"<Dn[x]>|N@7|Vn:4@16|opc1@21":          "arg_Dn_half",
+	"<Dd[x]>|D@7|Vd:4@16|opc1@21":          "arg_Dn_half",
 }
 
 // argSuffixes describes the encoding fields needed for a particular suffix.
@@ -563,17 +549,17 @@ var argSuffixes = map[string]string{
 	"#0":                           "",
 	"#0.0":                         "",
 	"#<const>":                     "imm12:12",
-	"#<fbits>":                     "", // XXX
+	"#<fbits>":                     "sx,imm4:4,i",
 	"#<imm12+4>":                   "imm12:12,imm4:4",
 	"#<imm24>":                     "imm24:24",
 	"#<imm3>":                      "imm3:3",
 	"#<imm4>":                      "imm4:4",
-	"#<imm4+4>":                    "imm4H:4,imm4L:4",
 	"#<imm5>":                      "imm5:5",
 	"#<imm5_nz>":                   "imm5:5",
 	"#<imm5_32>":                   "imm5:5",
 	"#<imm6>":                      "imm6:6",
 	"#<immsize>":                   "size:2",
+	"#<imm_vfp>":                   "imm4H:4,imm4L:4,sz",
 	"#<sat_imm4>":                  "sat_imm:4",
 	"#<sat_imm5>":                  "sat_imm:5",
 	"#<sat_imm4m1>":                "sat_imm:4",
@@ -584,11 +570,11 @@ var argSuffixes = map[string]string{
 	"#<widthm1>":                   "widthm1:5",
 	"+/-<Rm>":                      "Rm:4,U",
 	"<Dd>":                         "D,Vd:4",
-	"<Dd[x]>":                      "D,Vd:4,opc1:2,opc2:2",
+	"<Dd[x]>":                      "D,Vd:4,opc1",
 	"<Dm>":                         "M,Vm:4",
 	"<Dm[x]>":                      "M,Vm:4,size:2",
 	"<Dn>":                         "N,Vn:4",
-	"<Dn[x]>":                      "N,Vn:4,opc1:2,opc2:2",
+	"<Dn[x]>":                      "N,Vn:4,opc1",
 	"<Dm[size_x]>":                 "imm4:4",
 	"<Qd>":                         "D,Vd:4",
 	"<Qm>":                         "M,Vm:4",
@@ -608,10 +594,15 @@ var argSuffixes = map[string]string{
 	"<Rt1>":                        "Rt:4",
 	"<Rt2>":                        "Rt:4",
 	"<Rt>":                         "Rt:4",
-	"<Sd>":                         "D,Vd:4",
+	"<Rt_nzcv>":                    "Rt:4",
+	"<Sd>":                         "Vd:4,D",
 	"<Sm1>":                        "Vm:4,M",
 	"<Sm>":                         "Vm:4,M",
-	"<Sn>":                         "N,Vn:4",
+	"<Sn>":                         "Vn:4,N",
+	"<Sd,Dd>":                      "Vd:4,D,sz",
+	"<Dd,Sd>":                      "Vd:4,D,sz",
+	"<Sn,Dn>":                      "Vn:4,N,sz",
+	"<Sm,Dm>":                      "Vm:4,M,sz",
 	"<endian_specifier>":           "E",
 	"<label+/-12>":                 "imm12:12,U",
 	"<label+12>":                   "imm12:12",

@@ -75,6 +75,7 @@ func objdump(ext *ExtDis) error {
 			if strings.HasPrefix(text, "ldmfd") {
 				text = "ldm" + text[5:]
 			}
+			text = strings.Replace(text, "#0.0", "#0", -1)
 			if text == "undefined" && len(enc) == 4 {
 				text = "error: unknown instruction"
 				enc = nil

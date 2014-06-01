@@ -10,9 +10,11 @@ import (
 	"testing"
 )
 
-func TestObjdumpARMManual(t *testing.T) { testObjdumpARM(t, hexCases(t, objdumpManualTests)) }
-func TestObjdumpARMCond(t *testing.T)   { testObjdumpARM(t, condCases(t)) }
-func TestObjdumpARMUncond(t *testing.T) { testObjdumpARM(t, uncondCases(t)) }
+func TestObjdumpARMTestdata(t *testing.T) { testObjdumpARM(t, testdataCases(t)) }
+func TestObjdumpARMManual(t *testing.T)   { testObjdumpARM(t, hexCases(t, objdumpManualTests)) }
+func TestObjdumpARMCond(t *testing.T)     { testObjdumpARM(t, condCases(t)) }
+func TestObjdumpARMUncond(t *testing.T)   { testObjdumpARM(t, uncondCases(t)) }
+func TestObjdumpARMVFP(t *testing.T)      { testObjdumpARM(t, vfpCases(t)) }
 
 // objdumpManualTests holds test cases that will be run by TestObjdumpARMManual.
 // If you are debugging a few cases that turned up in a longer run, it can be useful
@@ -20,97 +22,34 @@ func TestObjdumpARMUncond(t *testing.T) { testObjdumpARM(t, uncondCases(t)) }
 // Note that these are byte sequences, so they must be reversed from the usual
 // word presentation.
 var objdumpManualTests = `
-00400f51
-00b00fc1
-b0006f31
-d0306f81
-f0606fd1
-b0706fa1
-d0a06f01
-f0d06f51
-b0e06f21
-f0207fa1
-b0307f71
-d0607fc1
-f0907f21
-b0a07fe1
-d0d07f41
-9faf90e1
-9fff9151
-9fdf9241
-9fbf9331
-9fef9581
-9fcf9671
-9faf9761
-9fff98c1
-9fdf99b1
-9fbf9aa1
-9fef9c01
-9fcf9de1
-9faf9ed1
-9fff9f41
-f020ef21
-b030efe1
-d060ef41
-f090ef91
-b0a0ef61
-d0d0efb1
-d020ff11
-f050ff61
-b060ff31
-d090ff81
-f0c0ffd1
-b0d0ffa1
-6e0060c1
-00f02053
-05f020a3
-0000bd28
-0100bd38
-0200bd48
-0400bd68
-0800bda8
-1000bd38
-2000bd48
-4000bd68
-8000bda8
-0001bd38
-0002bd48
-0004bd68
-0008bda8
-0010bd38
-0020bd48
-0040bd68
-0080bda8
-00002d99
-01002da9
-02002db9
-04002dd9
-08002d29
-10002da9
-20002db9
-40002dd9
-80002d29
-00012da9
-00022db9
-00042dd9
-00082d29
-00102da9
-00202db9
-00402dd9
-00802d29
+002a9b1d
+001b9bed
+020b8ded
+003a9b1d
+060b8ded
+fcde1100
+b4de1100
+bc480000
+0b008de7
+0b00ade7
+fdbcfaf7
 `
 
 // allowedMismatchObjdump reports whether the mismatch between text and dec
 // should be allowed by the test.
 func allowedMismatchObjdump(text string, size int, inst *Inst, dec ExtInst) bool {
 	if hasPrefix(text, "error:") {
-		if hasPrefix(dec.text, unsupported...) || strings.Contains(dec.text, "invalid:") || strings.HasSuffix(dec.text, "^") {
+		if hasPrefix(dec.text, unsupported...) || strings.Contains(dec.text, "invalid:") || strings.HasSuffix(dec.text, "^") || strings.Contains(dec.text, "f16.f64") || strings.Contains(dec.text, "f64.f16") {
 			return true
 		}
 		// word 4320F02C: libopcodes says 'nopmi {44}'.
 		if hasPrefix(dec.text, "nop") && strings.Contains(dec.text, "{") {
 			return true
 		}
+	}
+
+	if hasPrefix(dec.text, "error:") && text == "undef" && inst.Enc == 0xf7fabcfd {
+		return true
 	}
 
 	// word 00f02053: libopcodes says 'noppl {0}'.
@@ -319,7 +258,11 @@ var unsupported = strings.Fields(`
 	udf
 	udiv
 	urd
-	v
+	vfma
+	vfms
+	vfnma
+	vfnms
+	vrint
 	wfc
 	wfs
 `)

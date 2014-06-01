@@ -10,12 +10,25 @@ import (
 	"strings"
 )
 
+var saveDot = strings.NewReplacer(
+	".F16", "_dot_F16",
+	".F32", "_dot_F32",
+	".F64", "_dot_F64",
+	".S32", "_dot_S32",
+	".U32", "_dot_U32",
+	".FXS", "_dot_S",
+	".FXU", "_dot_U",
+	".32", "_dot_32",
+)
+
 // GNUSyntax returns the GNU assembler syntax for the instruction, as defined by GNU binutils.
 // This form typically matches the syntax defined in the ARM Reference Manual.
 func GNUSyntax(inst Inst) string {
 	var buf bytes.Buffer
 	op := inst.Op.String()
+	op = saveDot.Replace(op)
 	op = strings.Replace(op, ".", "", -1)
+	op = strings.Replace(op, "_dot_", ".", -1)
 	op = strings.ToLower(op)
 	buf.WriteString(op)
 	sep := " "
